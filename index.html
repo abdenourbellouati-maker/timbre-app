@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>إدارة الطوابع v28 - الترتيب المنظم</title>
+    <title>إدارة الطوابع v29 - تقرير الجرد</title>
     <style>
         :root {
             --bg: #1a1c1e; --card: #25282b; --text: #e0e2e5; --border: #3c4043;
@@ -14,12 +14,12 @@
         .container { max-width: 450px; margin: auto; padding-bottom: 50px; }
         .header-card { background: var(--card); padding: 20px; border-radius: 20px; text-align: center; border: 1px solid var(--border); margin-bottom: 15px; cursor: pointer; }
         .amount { font-size: 2.3em; font-weight: 900; color: var(--success); }
-        .btn-report { width: 100%; background: var(--wa-green); color: white; border: none; padding: 15px; border-radius: 15px; font-weight: bold; margin-bottom: 15px; cursor: pointer; font-size: 1.1em; }
+        .btn-report { width: 100%; background: var(--wa-green); color: white; border: none; padding: 15px; border-radius: 15px; font-weight: bold; margin-bottom: 15px; cursor: pointer; font-size: 1.1em; box-shadow: 0 4px 15px rgba(37, 211, 102, 0.2); }
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
         .stat-box { background: var(--card); padding: 12px; border-radius: 15px; text-align: center; border: 1px solid var(--border); border-bottom: 3px solid; }
         .stamp-card { background: var(--card); padding: 15px; border-radius: 18px; margin-bottom: 12px; border: 1px solid var(--border); }
         .btn-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; margin-top: 10px; }
-        button.action-btn { border: none; padding: 14px; border-radius: 12px; font-weight: bold; cursor: pointer; transition: 0.1s; }
+        button.action-btn { border: none; padding: 14px; border-radius: 12px; font-weight: bold; cursor: pointer; }
         .btn-sell { background: var(--success); color: white; }
         .btn-qty { background: #3d6a8d; color: white; }
         .btn-add { background: #454d55; color: white; }
@@ -35,17 +35,17 @@
 
 <div id="loader" class="loader">
     <div style="border: 4px solid #333; border-top: 4px solid var(--success); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite;"></div>
-    <b style="margin-top:10px;">جاري المزامنة والترتيب...</b>
+    <b style="margin-top:10px;">جاري المزامنة...</b>
 </div>
 
 <div class="container">
     <div class="header-card" onclick="editCash()">
-        <small>إجمالي الخزينة (دج) - اضغط للتعديل</small>
+        <small>إجمالي الخزينة (دج)</small>
         <div class="amount" id="cash-display">0</div>
-        <small style="color:var(--success)">مدخول المبيعات اليوم: <span id="session-total">0</span> دج</small>
+        <small style="color:var(--success)">مبيعات الجلسة الحالية: <span id="session-total">0</span> دج</small>
     </div>
 
-    <button class="btn-report" onclick="shareReport()">📊 إرسال التقرير (واتساب)</button>
+    <button class="btn-report" onclick="shareReport()">📊 إرسال تقرير الجرد (واتساب)</button>
 
     <div class="stats-grid">
         <div class="stat-box" style="border-color: var(--amande-text)">
@@ -58,10 +58,10 @@
 
     <div id="stamps-area"></div>
 
-    <button class="util-btn" onclick="toggleLogs()">📋 سجل عمليات اليوم</button>
+    <button class="util-btn" onclick="toggleLogs()">📋 سجل العمليات</button>
     <div id="logs-container"></div>
 
-    <button class="btn-full-reset" onclick="fullReset()">⚠️ تصفير شامل (الخزينة + المخزون)</button>
+    <button class="btn-full-reset" onclick="fullReset()">⚠️ تصفير شامل (خزينة + مخزون)</button>
 </div>
 
 <script>
@@ -77,7 +77,6 @@
             const cashItem = cloudData.find(d => d.type.trim().toUpperCase() === 'CASH');
             state.cash = cashItem ? parseInt(cashItem.quantity) : 0;
             
-            // التعديل الأساسي للترتيب (النوع أولاً ثم القيمة)
             state.data = cloudData.filter(d => {
                 const t = d.type.trim().toUpperCase();
                 return t !== 'CASH' && t !== 'TYPE' && t !== '';
@@ -191,6 +190,53 @@
         }
     }
 
+    // دالة إرسال التقرير المنظمة
+    function shareReport() {
+        let sTotal = 0;
+        let report = `📝 *تقرير جرد المبيعات*\n`;
+        report += `التاريخ: ${new Date().toLocaleDateString('ar-DZ')}\n`;
+        report += `--------------------------\n`;
+
+        let currentType = "";
+        
+        // تحويل الكائن إلى مصفوفة للترتيب في التقرير
+        let sortedSales = Object.values(sessionSales).sort((a, b) => {
+            if (a.type < b.type) return -1;
+            if (a.type > b.type) return 1;
+            return b.val - a.val;
+        });
+
+        sortedSales.forEach(s => {
+            if (s.type !== currentType) {
+                report += `\n*${s.type}*\n`;
+                currentType = s.type;
+            }
+            report += `${s.val} دج\n`;
+            report += `بيع ${s.qty} ⬅️ بمبلغ ${s.total} دج\n`;
+            report += `---\n`;
+            sTotal += s.total;
+        });
+
+        if (sortedSales.length === 0) report += `_لا توجد مبيعات في هذه الجلسة_\n`;
+
+        report += `\n💰 *مجموع المبيعات:* ${sTotal} دج\n`;
+        report += `🏛️ *إجمالي الخزينة:* ${state.cash} دج\n`;
+        report += `--------------------------`;
+
+        window.open(`https://wa.me/?text=${encodeURIComponent(report)}`, '_blank');
+
+        // خيار لتصفير مبيعات الجلسة بعد الإرسال
+        setTimeout(() => {
+            if (confirm("هل تم إرسال التقرير بنجاح؟\nهل تريد تصفير 'مبيعات الجلسة' لبدء جرد جديد؟\n(ملاحظة: هذا لن يمسح الخزينة أو المخزون)")) {
+                sessionSales = {};
+                state.logs = [];
+                localStorage.removeItem('sessionSales');
+                localStorage.removeItem('dailyLogs');
+                render();
+            }
+        }, 1000);
+    }
+
     async function fullReset() {
         if (confirm("⚠️ هل أنت متأكد من تصفير كل شيء (خزينة ومخزون)؟")) {
             document.getElementById('loader').style.display = 'flex';
@@ -199,18 +245,6 @@
             localStorage.clear();
             location.reload();
         }
-    }
-
-    function shareReport() {
-        let sTotal = 0;
-        let report = `📊 *تقرير مبيعات الجلسة*\n`;
-        for (let k in sessionSales) {
-            let s = sessionSales[k];
-            report += `• ${s.type} (${s.val}): ${s.qty} طابع ⬅️ ${s.total}دج\n`;
-            sTotal += s.total;
-        }
-        report += `--------------------------\n💰 مدخول المبيعات: ${sTotal} دج\n🏛️ الخزينة الحالية: ${state.cash} دج`;
-        window.open(`https://wa.me/?text=${encodeURIComponent(report)}`, '_blank');
     }
 
     function ask(idx, action) {
