@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>إدارة الطوابع v31 - الترتيب المثالي</title>
+    <title>إدارة الطوابع v32 - التقرير الشامل</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <style>
@@ -13,36 +13,47 @@
         }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; direction: rtl; }
         .container { max-width: 450px; margin: auto; padding-bottom: 50px; }
-        .header-card { background: var(--card); padding: 20px; border-radius: 20px; text-align: center; border: 1px solid var(--border); margin-bottom: 15px; }
+        
+        /* كرت الخزينة */
+        .header-card { background: var(--card); padding: 20px; border-radius: 20px; text-align: center; border: 1px solid var(--border); margin-bottom: 15px; cursor: pointer; }
         .amount { font-size: 2.3em; font-weight: 900; color: var(--success); }
-        .btn-pdf { width: 100%; background: var(--pdf-red); color: white; border: none; padding: 15px; border-radius: 15px; font-weight: bold; margin-bottom: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        
+        .btn-pdf { width: 100%; background: var(--pdf-red); color: white; border: none; padding: 15px; border-radius: 15px; font-weight: bold; margin-bottom: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 1.1em; }
+
+        /* شبكة المجاميع (التي اختفت وعادت) */
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
         .stat-box { background: var(--card); padding: 12px; border-radius: 15px; text-align: center; border: 1px solid var(--border); border-bottom: 3px solid; }
+
         .stamp-card { background: var(--card); padding: 15px; border-radius: 18px; margin-bottom: 12px; border: 1px solid var(--border); }
         .btn-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; margin-top: 10px; }
-        button.action-btn { border: none; padding: 14px; border-radius: 12px; font-weight: bold; cursor: pointer; }
+        button.action-btn { border: none; padding: 14px; border-radius: 12px; font-weight: bold; cursor: pointer; transition: 0.1s; }
         .btn-sell { background: var(--success); color: white; }
         .btn-qty { background: #3d6a8d; color: white; }
         .btn-add { background: #454d55; color: white; }
+
         .loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
     </style>
 </head>
 <body>
 
-<div id="loader" class="loader"><b>جاري ترتيب البيانات...</b></div>
+<div id="loader" class="loader"><b>جاري التحميل...</b></div>
 
 <div class="container">
     <div class="header-card" onclick="editCash()">
-        <small>إجمالي الخزينة (دج)</small>
+        <small>إجمالي الخزينة (دج) - إضغط للتعديل</small>
         <div class="amount" id="cash-display">0</div>
-        <small style="color:var(--success)">مبيعات الجلسة: <span id="session-total">0</span> دج</small>
+        <small style="color:var(--success)">مبيعات الجلسة الحالية: <span id="session-total">0</span> دج</small>
     </div>
 
-    <button class="btn-pdf" onclick="generatePDF()">📄 تحميل تقرير الجرد (PDF)</button>
+    <button class="btn-pdf" onclick="generatePDF()">📄 تحميل تقرير الجرد المالي (PDF)</button>
 
     <div class="stats-grid">
-        <div class="stat-box" style="border-color: var(--amande-text)"><small style="color: var(--amande-text)">مجموع AMANDE</small><br><b id="val-amande">0 دج</b></div>
-        <div class="stat-box" style="border-color: var(--fiscal-text)"><small style="color: var(--fiscal-text)">مجموع FISCAL</small><br><b id="val-fiscal">0 دج</b></div>
+        <div class="stat-box" style="border-color: var(--amande-text)">
+            <small style="color: var(--amande-text)">مجموع AMANDE</small><br><b id="val-amande">0 دج</b>
+        </div>
+        <div class="stat-box" style="border-color: var(--fiscal-text)">
+            <small style="color: var(--fiscal-text)">مجموع FISCAL</small><br><b id="val-fiscal">0 دج</b>
+        </div>
     </div>
 
     <div id="stamps-area"></div>
@@ -60,19 +71,17 @@
             const cashItem = cloudData.find(d => d.type.trim().toUpperCase() === 'CASH');
             state.cash = cashItem ? parseInt(cashItem.quantity) : 0;
             
-            // إصلاح الترتيب: النوع (AMANDE قبل FISCAL) ثم القيمة (من الأكبر للأصغر)
+            // ترتيب مثالي: النوع أولاً ثم القيمة تنازلياً
             state.data = cloudData.filter(d => {
                 const t = d.type.trim().toUpperCase();
                 return t !== 'CASH' && t !== 'TYPE' && t !== '';
             }).sort((a, b) => {
-                // ترتيب النوع أبجدياً يضع AMANDE أولاً
                 if (a.type.trim().toUpperCase() < b.type.trim().toUpperCase()) return -1;
                 if (a.type.trim().toUpperCase() > b.type.trim().toUpperCase()) return 1;
-                // إذا كان نفس النوع، نرتب حسب القيمة تنازلياً
                 return b.value - a.value;
             });
             render();
-        } catch (e) { alert("خطأ في الاتصال!"); }
+        } catch (e) { alert("خطأ في الاتصال بالسحاب!"); }
         document.getElementById('loader').style.display = 'none';
     }
 
@@ -91,8 +100,8 @@
             area.innerHTML += `
                 <div class="stamp-card">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <b style="font-size:1.2em;">${item.value} دج</b>
-                        <span style="background:#1a1c1e; padding:4px 10px; border-radius:8px; border:1px solid var(--border)">📦 ${item.quantity}</span>
+                        <b style="font-size:1.25em;">${item.value} دج</b>
+                        <span style="background:#1a1c1e; padding:4px 12px; border-radius:8px; border:1px solid var(--border)">📦 ${item.quantity}</span>
                     </div>
                     <div class="btn-row">
                         <button class="action-btn btn-sell" onclick="process(${i}, 'sell', 1)">بيع 1</button>
@@ -100,11 +109,13 @@
                         <button class="action-btn btn-add" onclick="ask(${i}, 'add')">إمداد</button>
                     </div>
                 </div>`;
+            
             if (item.type === 'AMANDE') vA += (item.value * item.quantity);
             else vF += (item.value * item.quantity);
         });
 
         for (let k in sessionSales) { sTotal += sessionSales[k].total; }
+        
         document.getElementById('cash-display').innerText = state.cash.toLocaleString();
         document.getElementById('session-total').innerText = sTotal.toLocaleString();
         document.getElementById('val-amande').innerText = vA.toLocaleString() + ' دج';
@@ -115,6 +126,7 @@
         let itm = state.data[idx];
         let val = itm.value * num;
         if (navigator.vibrate) navigator.vibrate(60);
+
         if (action === 'sell') {
             if (itm.quantity >= num) {
                 itm.quantity -= num;
@@ -125,6 +137,7 @@
                 sessionSales[id].total += val;
             } else { alert("المخزون ناقص!"); return; }
         } else { itm.quantity += num; }
+        
         localStorage.setItem('sessionSales', JSON.stringify(sessionSales));
         render();
         fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify({ type: itm.type, value: itm.value, newQty: itm.quantity, newCash: state.cash })});
@@ -133,20 +146,48 @@
     function generatePDF() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        doc.text("Daily Stamp Inventory Report", 105, 20, { align: "center" });
-        doc.text(`Date: ${new Date().toLocaleString()}`, 15, 30);
         
-        const tableBody = Object.values(sessionSales).map(s => [s.type, s.val, s.qty, s.total]);
-        doc.autoTable({
-            startY: 40,
-            head: [['Type', 'Value', 'Qty Sold', 'Total']],
-            body: tableBody,
-            headStyles: { fillColor: [67, 160, 71] }
+        // تصميم رأس التقرير
+        doc.setFontSize(22);
+        doc.setTextColor(40);
+        doc.text("STAMP INVENTORY REPORT", 105, 20, { align: "center" });
+        
+        doc.setFontSize(10);
+        doc.text(`Report Date: ${new Date().toLocaleString()}`, 15, 30);
+        doc.text(`Total Safe Balance: ${state.cash.toLocaleString()} DA`, 15, 36);
+        
+        // بناء الجدول
+        const tableData = [];
+        let grandTotal = 0;
+        
+        Object.values(sessionSales).sort((a,b)=> a.type.localeCompare(b.type) || b.val - a.val).forEach(s => {
+            tableData.push([s.type, `${s.val} DA`, s.qty, `${s.total.toLocaleString()} DA`]);
+            grandTotal += s.total;
         });
-        
+
+        doc.autoTable({
+            startY: 45,
+            head: [['Category', 'Stamp Value', 'Sold Qty', 'Total Amount']],
+            body: tableData,
+            theme: 'striped',
+            headStyles: { fillColor: [44, 62, 80], halign: 'center' },
+            columnStyles: { 0: {halign: 'center'}, 1: {halign: 'center'}, 2: {halign: 'center'}, 3: {halign: 'right'} },
+        });
+
+        // المجموع النهائي أسفل الجدول
+        const finalY = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(14);
+        doc.setTextColor(67, 160, 71); // لون أخضر
+        doc.text(`SESSION TOTAL SALES: ${grandTotal.toLocaleString()} DA`, 195, finalY, { align: "right" });
+
         doc.save(`Report_${Date.now()}.pdf`);
+
         setTimeout(() => {
-            if(confirm("تصفير مبيعات الجلسة؟")) { sessionSales = {}; localStorage.removeItem('sessionSales'); render(); }
+            if(confirm("هل تريد تصفير مبيعات الجلسة لبدء جرد جديد؟")) {
+                sessionSales = {};
+                localStorage.removeItem('sessionSales');
+                render();
+            }
         }, 1000);
     }
 
@@ -154,10 +195,14 @@
         let n = prompt("الكمية:", "1");
         if (n && !isNaN(n)) process(idx, action, parseInt(n));
     }
-    
+
     function editCash() {
-        let v = prompt("تعديل الخزينة:", state.cash);
-        if (v && !isNaN(v)) { state.cash = parseInt(v); render(); fetch(SCRIPT_URL, {method:"POST", body:JSON.stringify({type:"CASH", value:0, newQty:0, newCash:state.cash})}); }
+        let v = prompt("تعديل مبلغ الخزينة يدوياً:", state.cash);
+        if (v !== null && !isNaN(v)) {
+            state.cash = parseInt(v);
+            render();
+            fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify({ type: "CASH", value: 0, newQty: 0, newCash: state.cash })});
+        }
     }
 
     loadData();
