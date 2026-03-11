@@ -3,18 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>إدارة الطوابع v29 - تقرير الجرد</title>
+    <title>إدارة الطوابع v30 - تقارير PDF</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    
     <style>
         :root {
             --bg: #1a1c1e; --card: #25282b; --text: #e0e2e5; --border: #3c4043;
-            --success: #43a047; --wa-green: #25d366; --amande-text: #ff8a80; --fiscal-text: #81d4fa;
-            --danger: #ff5252;
+            --success: #43a047; --pdf-red: #e74c3c; --amande-text: #ff8a80; --fiscal-text: #81d4fa;
         }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; direction: rtl; }
         .container { max-width: 450px; margin: auto; padding-bottom: 50px; }
-        .header-card { background: var(--card); padding: 20px; border-radius: 20px; text-align: center; border: 1px solid var(--border); margin-bottom: 15px; cursor: pointer; }
+        .header-card { background: var(--card); padding: 20px; border-radius: 20px; text-align: center; border: 1px solid var(--border); margin-bottom: 15px; }
         .amount { font-size: 2.3em; font-weight: 900; color: var(--success); }
-        .btn-report { width: 100%; background: var(--wa-green); color: white; border: none; padding: 15px; border-radius: 15px; font-weight: bold; margin-bottom: 15px; cursor: pointer; font-size: 1.1em; box-shadow: 0 4px 15px rgba(37, 211, 102, 0.2); }
+        /* زر PDF الجديد */
+        .btn-pdf { width: 100%; background: var(--pdf-red); color: white; border: none; padding: 15px; border-radius: 15px; font-weight: bold; margin-bottom: 15px; cursor: pointer; font-size: 1.1em; display: flex; align-items: center; justify-content: center; gap: 10px; }
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
         .stat-box { background: var(--card); padding: 12px; border-radius: 15px; text-align: center; border: 1px solid var(--border); border-bottom: 3px solid; }
         .stamp-card { background: var(--card); padding: 15px; border-radius: 18px; margin-bottom: 12px; border: 1px solid var(--border); }
@@ -26,17 +29,12 @@
         .util-btn { width: 100%; padding: 12px; background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 12px; font-weight: bold; margin-top: 10px; cursor: pointer; }
         #logs-container { display: none; background: var(--card); border-radius: 12px; padding: 10px; margin-top: 5px; border: 1px solid var(--border); max-height: 200px; overflow-y: auto; }
         .log-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.85em; }
-        .btn-full-reset { width: 100%; background: none; border: 1px solid var(--danger); color: var(--danger); padding: 12px; border-radius: 15px; margin-top: 40px; font-weight: bold; cursor: pointer; opacity: 0.6; }
         .loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-<div id="loader" class="loader">
-    <div style="border: 4px solid #333; border-top: 4px solid var(--success); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite;"></div>
-    <b style="margin-top:10px;">جاري المزامنة...</b>
-</div>
+<div id="loader" class="loader"><b>جاري تحميل البيانات...</b></div>
 
 <div class="container">
     <div class="header-card" onclick="editCash()">
@@ -45,7 +43,9 @@
         <small style="color:var(--success)">مبيعات الجلسة الحالية: <span id="session-total">0</span> دج</small>
     </div>
 
-    <button class="btn-report" onclick="shareReport()">📊 إرسال تقرير الجرد (واتساب)</button>
+    <button class="btn-pdf" onclick="generatePDF()">
+        📄 تحميل تقرير الجرد (PDF)
+    </button>
 
     <div class="stats-grid">
         <div class="stat-box" style="border-color: var(--amande-text)">
@@ -58,25 +58,22 @@
 
     <div id="stamps-area"></div>
 
-    <button class="util-btn" onclick="toggleLogs()">📋 سجل العمليات</button>
+    <button class="util-btn" onclick="toggleLogs()">📋 سجل العمليات الأخيرة</button>
     <div id="logs-container"></div>
-
-    <button class="btn-full-reset" onclick="fullReset()">⚠️ تصفير شامل (خزينة + مخزون)</button>
 </div>
 
 <script>
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0-L1fXgmQUP_YpWlXW78vIWvDYpg37A8DU8hAwbEoxBCLL3fazEGUYns5eYb8QJtP/exec";
-    
     let sessionSales = JSON.parse(localStorage.getItem('sessionSales')) || {};
     let state = { cash: 0, logs: JSON.parse(localStorage.getItem('dailyLogs')) || [], data: [] };
 
+    // تحميل البيانات من السحاب
     async function loadData() {
         try {
             const response = await fetch(SCRIPT_URL);
             const cloudData = await response.json();
             const cashItem = cloudData.find(d => d.type.trim().toUpperCase() === 'CASH');
             state.cash = cashItem ? parseInt(cashItem.quantity) : 0;
-            
             state.data = cloudData.filter(d => {
                 const t = d.type.trim().toUpperCase();
                 return t !== 'CASH' && t !== 'TYPE' && t !== '';
@@ -85,12 +82,63 @@
                 if (a.type > b.type) return 1;
                 return b.value - a.value;
             });
-
             render();
-        } catch (e) { alert("خطأ في الاتصال!"); }
+        } catch (e) { alert("خطأ في الاتصال بالسحاب!"); }
         document.getElementById('loader').style.display = 'none';
     }
 
+    // إنشاء تقرير PDF
+    function generatePDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const dateStr = new Date().toLocaleString('ar-DZ');
+
+        // العنوان
+        doc.setFontSize(20);
+        doc.text("Report Sales - Stamp Inventory", 105, 20, { align: "center" });
+        
+        doc.setFontSize(12);
+        doc.text(`Date: ${dateStr}`, 15, 30);
+        doc.text(`Total Cash: ${state.cash} DA`, 15, 37);
+
+        // تحضير البيانات للجدول
+        const tableBody = [];
+        let grandTotal = 0;
+
+        Object.values(sessionSales).sort((a, b) => (a.type < b.type ? -1 : 1)).forEach(s => {
+            tableBody.push([s.type, `${s.val} DA`, s.qty, `${s.total} DA`]);
+            grandTotal += s.total;
+        });
+
+        // رسم الجدول
+        doc.autoTable({
+            startY: 45,
+            head: [['Type', 'Value', 'Quantity Sold', 'Subtotal']],
+            body: tableBody,
+            theme: 'grid',
+            headStyles: { fillColor: [67, 160, 71] }, // لون أخضر
+            styles: { fontSize: 10, halign: 'center' }
+        });
+
+        // المجموع النهائي
+        const finalY = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(14);
+        doc.text(`Total Session Sales: ${grandTotal} DA`, 15, finalY);
+
+        // تحميل الملف
+        doc.save(`Report_${new Date().getTime()}.pdf`);
+
+        // تصفير الجلسة بعد التحميل
+        setTimeout(() => {
+            if (confirm("هل تم تحميل ملف PDF بنجاح؟ هل تريد تصفير مبيعات الجلسة الحالية؟")) {
+                sessionSales = {};
+                localStorage.removeItem('sessionSales');
+                render();
+            }
+        }, 1500);
+    }
+
+    // باقي دوال النظام (render, process, الخ)
     function render() {
         const area = document.getElementById('stamps-area');
         area.innerHTML = '';
@@ -100,14 +148,14 @@
         state.data.forEach((item, i) => {
             if (item.type !== lastType) {
                 let color = item.type === 'AMANDE' ? 'var(--amande-text)' : 'var(--fiscal-text)';
-                area.innerHTML += `<div style="margin:20px 5px 10px; font-weight:bold; color:${color}">● طوابع ${item.type}</div>`;
+                area.innerHTML += `<div style="margin:20px 5px 10px; font-weight:bold; color:${color}">● ${item.type}</div>`;
                 lastType = item.type;
             }
             area.innerHTML += `
                 <div class="stamp-card">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <b style="font-size:1.3em;">${item.value} دج</b>
-                        <span style="background:#1a1c1e; padding:4px 10px; border-radius:8px; border: 1px solid var(--border);">📦 ${item.quantity}</span>
+                        <b>${item.value} دج</b>
+                        <span>📦 ${item.quantity}</span>
                     </div>
                     <div class="btn-row">
                         <button class="action-btn btn-sell" onclick="process(${i}, 'sell', 1)">بيع 1</button>
@@ -115,25 +163,21 @@
                         <button class="action-btn btn-add" onclick="ask(${i}, 'add')">إمداد</button>
                     </div>
                 </div>`;
-            
             if (item.type === 'AMANDE') vA += (item.value * item.quantity);
             else vF += (item.value * item.quantity);
         });
 
         for (let k in sessionSales) { sTotal += sessionSales[k].total; }
-        
         document.getElementById('cash-display').innerText = state.cash.toLocaleString();
         document.getElementById('session-total').innerText = sTotal.toLocaleString();
         document.getElementById('val-amande').innerText = vA.toLocaleString() + ' دج';
         document.getElementById('val-fiscal').innerText = vF.toLocaleString() + ' دج';
-        updateLogsUI();
     }
 
     function process(idx, action, num) {
         let itm = state.data[idx];
         let val = itm.value * num;
         if (navigator.vibrate) navigator.vibrate(60);
-
         if (action === 'sell') {
             if (itm.quantity >= num) {
                 itm.quantity -= num;
@@ -142,114 +186,21 @@
                 if (!sessionSales[id]) sessionSales[id] = { type: itm.type, val: itm.value, qty: 0, total: 0 };
                 sessionSales[id].qty += num;
                 sessionSales[id].total += val;
-                addLog(`بيع ${num} (${itm.value}دج)`, "sell");
-            } else { alert("المخزون ناقص!"); return; }
-        } else {
-            itm.quantity += num;
-            addLog(`إمداد ${num} (${itm.value}دج)`, "add");
-        }
-        
+            } else { alert("المخزون غير كافٍ!"); return; }
+        } else { itm.quantity += num; }
         localStorage.setItem('sessionSales', JSON.stringify(sessionSales));
-        localStorage.setItem('dailyLogs', JSON.stringify(state.logs));
         render();
-        sendToCloud(itm.type, itm.value, itm.quantity, state.cash);
-    }
-
-    async function sendToCloud(t, v, q, c) {
-        fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify({ type: t, value: v, newQty: q, newCash: c })});
-    }
-
-    function addLog(m, type) {
-        const t = new Date().toLocaleTimeString('ar-DZ', {hour:'2-digit', minute:'2-digit'});
-        state.logs.unshift({ t, m, type });
-        if (state.logs.length > 20) state.logs.pop();
-    }
-
-    function updateLogsUI() {
-        const container = document.getElementById('logs-container');
-        if (state.logs.length === 0) { container.innerHTML = '<center>لا توجد عمليات</center>'; return; }
-        container.innerHTML = state.logs.map(log => `
-            <div class="log-item">
-                <span><small style="opacity:0.4">${log.t}</small> ${log.m}</span>
-                <b style="color:${log.type==='sell'?'var(--success)':'var(--fiscal-text)'}">${log.type==='sell'?'✔️':'➕'}</b>
-            </div>
-        `).join('');
-    }
-
-    function toggleLogs() {
-        const c = document.getElementById('logs-container');
-        c.style.display = (c.style.display === 'block') ? 'none' : 'block';
-    }
-
-    function editCash() {
-        let v = prompt("تعديل مبلغ الخزينة يدوياً:", state.cash);
-        if (v !== null && !isNaN(v)) {
-            state.cash = parseInt(v);
-            render();
-            sendToCloud("CASH", 0, 0, state.cash);
-        }
-    }
-
-    // دالة إرسال التقرير المنظمة
-    function shareReport() {
-        let sTotal = 0;
-        let report = `📝 *تقرير جرد المبيعات*\n`;
-        report += `التاريخ: ${new Date().toLocaleDateString('ar-DZ')}\n`;
-        report += `--------------------------\n`;
-
-        let currentType = "";
-        
-        // تحويل الكائن إلى مصفوفة للترتيب في التقرير
-        let sortedSales = Object.values(sessionSales).sort((a, b) => {
-            if (a.type < b.type) return -1;
-            if (a.type > b.type) return 1;
-            return b.val - a.val;
-        });
-
-        sortedSales.forEach(s => {
-            if (s.type !== currentType) {
-                report += `\n*${s.type}*\n`;
-                currentType = s.type;
-            }
-            report += `${s.val} دج\n`;
-            report += `بيع ${s.qty} ⬅️ بمبلغ ${s.total} دج\n`;
-            report += `---\n`;
-            sTotal += s.total;
-        });
-
-        if (sortedSales.length === 0) report += `_لا توجد مبيعات في هذه الجلسة_\n`;
-
-        report += `\n💰 *مجموع المبيعات:* ${sTotal} دج\n`;
-        report += `🏛️ *إجمالي الخزينة:* ${state.cash} دج\n`;
-        report += `--------------------------`;
-
-        window.open(`https://wa.me/?text=${encodeURIComponent(report)}`, '_blank');
-
-        // خيار لتصفير مبيعات الجلسة بعد الإرسال
-        setTimeout(() => {
-            if (confirm("هل تم إرسال التقرير بنجاح؟\nهل تريد تصفير 'مبيعات الجلسة' لبدء جرد جديد؟\n(ملاحظة: هذا لن يمسح الخزينة أو المخزون)")) {
-                sessionSales = {};
-                state.logs = [];
-                localStorage.removeItem('sessionSales');
-                localStorage.removeItem('dailyLogs');
-                render();
-            }
-        }, 1000);
-    }
-
-    async function fullReset() {
-        if (confirm("⚠️ هل أنت متأكد من تصفير كل شيء (خزينة ومخزون)؟")) {
-            document.getElementById('loader').style.display = 'flex';
-            await sendToCloud("CASH", 0, 0, 0);
-            for (let item of state.data) { await sendToCloud(item.type, item.value, 0, 0); }
-            localStorage.clear();
-            location.reload();
-        }
+        fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify({ type: itm.type, value: itm.value, newQty: itm.quantity, newCash: state.cash })});
     }
 
     function ask(idx, action) {
         let n = prompt("أدخل الكمية:", "1");
         if (n && !isNaN(n)) process(idx, action, parseInt(n));
+    }
+
+    function toggleLogs() {
+        const c = document.getElementById('logs-container');
+        c.style.display = (c.style.display === 'block') ? 'none' : 'block';
     }
 
     loadData();
